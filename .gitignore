@@ -1,0 +1,7 @@
+venv/
+__pycache__/
+*.pyc
+.env
+kaggle.json
+*.png
+data/leads_processed.csv
