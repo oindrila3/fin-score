@@ -11,3 +11,4 @@ seaborn
 jupyter
 python-dotenv
 kaggle
+sqlalchemy
