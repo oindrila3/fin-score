@@ -37,6 +37,29 @@ SCALE_POS_WEIGHT = 2.0
 TEST_SIZE = 0.2
 RANDOM_STATE = 42
 
+# ── Model Variants ───────────────────────────────────────────
+
+# Features available AFTER sales rep interaction
+# Used for leads already in CRM with history
+PIPELINE_FEATURES_TO_EXCLUDE = []  # Uses all features
+
+# Features NOT available at lead creation time
+# These are post-hoc sales rep judgment columns
+COLDSTART_FEATURES_TO_EXCLUDE = [
+    'Lead Quality_freq_encoded',
+    'Lead Profile_freq_encoded', 
+    'Tags_freq_encoded',
+    'was_lead_quality_assessed',
+    'was_lead_profile_assessed',
+    'was_tags_assessed',
+]
+
+# Model file names
+PIPELINE_MODEL_NAME = 'pipeline_model.pkl'
+COLDSTART_MODEL_NAME = 'coldstart_model.pkl'
+PIPELINE_FEATURES_NAME = 'pipeline_feature_names.pkl'
+COLDSTART_FEATURES_NAME = 'coldstart_feature_names.pkl'
+
 # ── Scoring Thresholds ───────────────────────────────────────
 HIGH_PRIORITY_THRESHOLD = 0.7
 MEDIUM_PRIORITY_THRESHOLD = 0.4

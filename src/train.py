@@ -393,29 +393,123 @@ def plot_model_results(model: xgb.XGBClassifier,
 
 
 # ============================================================
-# STEP 9: SAVE MODEL
+# TRAIN PIPELINE MODEL (leads with sales history)
 # ============================================================
 
-def save_model(model: xgb.XGBClassifier,
-               feature_names: list) -> None:
+def train_pipeline_model(df: pd.DataFrame) -> Dict:
     """
-    Serializes trained model and feature names to disk.
-    The API loads these files to score new leads in real time.
-    pickle stores the exact trained model object.
+    Trains model for leads already in CRM with sales history.
+    Uses ALL available features including sales rep judgments.
+    
+    Use case: Re-scoring existing leads in Salesforce/CRM
+    Expected AUC: ~0.93
     """
-    os.makedirs(MODEL_DIR, exist_ok=True)
+    logger.info("=" * 50)
+    logger.info("TRAINING PIPELINE MODEL")
+    logger.info("Audience: Existing leads with sales history")
+    logger.info("=" * 50)
 
-    # Save model
-    model_path = os.path.join(MODEL_DIR, 'fin_score_model.pkl')
+    X, y, feature_names = prepare_features(df)
+    X_train, X_test, y_train, y_test = split_data(X, y)
+    scale_pos_weight = calculate_scale_pos_weight(y_train)
+    
+    model = train_xgboost(X_train, y_train, scale_pos_weight)
+    eval_results = evaluate_model(model, X_test, 
+                                   y_test, feature_names)
+
+    # Cross validate to prove generalization
+    cv_results = run_cross_validation(model, X, y)
+    logger.info(f"Pipeline CV AUC: {cv_results['mean_auc']:.4f} "
+            f"(+/- {cv_results['std_auc']:.4f})")
+    
+    # Save with pipeline model name
+    os.makedirs(MODEL_DIR, exist_ok=True)
+    
+    model_path = os.path.join(MODEL_DIR, PIPELINE_MODEL_NAME)
     with open(model_path, 'wb') as f:
         pickle.dump(model, f)
-    logger.info(f"Model saved to {model_path}")
-
-    # Save feature names — API needs exact same columns
-    features_path = os.path.join(MODEL_DIR, 'feature_names.pkl')
+        
+    features_path = os.path.join(MODEL_DIR, PIPELINE_FEATURES_NAME)
     with open(features_path, 'wb') as f:
         pickle.dump(feature_names, f)
-    logger.info(f"Feature names saved to {features_path}")
+
+    logger.info(f"Pipeline model saved: AUC={eval_results['auc']:.4f}")
+    
+    return {
+        'model': model,
+        'feature_names': feature_names,
+        'auc': eval_results['auc'],
+        'lift': eval_results['lift'],
+        'model_type': 'pipeline'
+    }
+
+
+# ============================================================
+# TRAIN COLD-START MODEL (brand new leads)
+# ============================================================
+
+def train_coldstart_model(df: pd.DataFrame) -> Dict:
+    """
+    Trains model for brand new leads with no sales history.
+    Excludes post-hoc sales rep judgment columns that wouldn't
+    exist when a lead first submits a form on the website.
+    
+    Use case: Real-time scoring at lead creation
+    Expected AUC: ~0.91
+    """
+    logger.info("=" * 50)
+    logger.info("TRAINING COLD-START MODEL")
+    logger.info("Audience: Brand new leads at creation time")
+    logger.info("=" * 50)
+
+    X, y, feature_names = prepare_features(df)
+    
+    # Remove post-hoc features not available at lead creation
+    cols_to_exclude = [
+        c for c in COLDSTART_FEATURES_TO_EXCLUDE 
+        if c in X.columns
+    ]
+    
+    X_clean = X.drop(columns=cols_to_exclude)
+    clean_feature_names = X_clean.columns.tolist()
+    
+    logger.info(f"Excluded {len(cols_to_exclude)} post-hoc features:")
+    for col in cols_to_exclude:
+        logger.info(f"  - {col}")
+    logger.info(f"Cold-start features: {len(clean_feature_names)}")
+    
+    X_train, X_test, y_train, y_test = split_data(X_clean, y)
+    scale_pos_weight = calculate_scale_pos_weight(y_train)
+    
+    model = train_xgboost(X_train, y_train, scale_pos_weight)
+    eval_results = evaluate_model(model, X_test,
+                                   y_test, clean_feature_names)
+    
+    # Cross validate to prove generalization  
+    cv_results = run_cross_validation(model, X_clean, y)
+    logger.info(f"Coldstart CV AUC: {cv_results['mean_auc']:.4f} "
+            f"(+/- {cv_results['std_auc']:.4f})")
+    
+    # Save with coldstart model name
+    os.makedirs(MODEL_DIR, exist_ok=True)
+    
+    model_path = os.path.join(MODEL_DIR, COLDSTART_MODEL_NAME)
+    with open(model_path, 'wb') as f:
+        pickle.dump(model, f)
+        
+    features_path = os.path.join(MODEL_DIR, COLDSTART_FEATURES_NAME)
+    with open(features_path, 'wb') as f:
+        pickle.dump(clean_feature_names, f)
+
+    logger.info(f"Cold-start model saved: AUC={eval_results['auc']:.4f}")
+    
+    return {
+        'model': model,
+        'feature_names': clean_feature_names,
+        'auc': eval_results['auc'],
+        'lift': eval_results['lift'],
+        'model_type': 'coldstart'
+    }
 
 
 # ============================================================
@@ -424,60 +518,68 @@ def save_model(model: xgb.XGBClassifier,
 
 def run_training_pipeline() -> Dict:
     """
-    Runs the complete model training pipeline.
-    Called by notebooks and directly from terminal.
-
-    Returns:
-        Dictionary with model, metrics, and feature names
+    Runs complete training pipeline for BOTH model variants:
+    1. Pipeline model — for leads with sales history (AUC ~0.93)
+    2. Cold-start model — for brand new leads (AUC ~0.91)
+    
+    Both models are saved to disk for the API to load.
+    The API automatically selects the right model based on
+    whether sales history features are present in the request.
     """
     logger.info("=" * 50)
-    logger.info("STARTING TRAINING PIPELINE")
+    logger.info("STARTING FULL TRAINING PIPELINE")
+    logger.info("Training TWO model variants")
     logger.info("=" * 50)
 
-    # Load and prepare
+    # Load processed data
     df = load_processed_data()
+
+    # Train both models
+    pipeline_results = train_pipeline_model(df)
+    coldstart_results = train_coldstart_model(df)
+
+    # Generate visualizations for pipeline model
     X, y, feature_names = prepare_features(df)
     X_train, X_test, y_train, y_test = split_data(X, y)
+    y_pred_proba = pipeline_results['model'].predict_proba(
+        X_test
+    )[:, 1]
+    
+    plot_model_results(
+        pipeline_results['model'],
+        X_test, y_test,
+        y_pred_proba,
+        feature_names
+    )
 
-    # Train
-    scale_pos_weight = calculate_scale_pos_weight(y_train)
-    model = train_xgboost(X_train, y_train, scale_pos_weight)
-
-    # Evaluate
-    cv_results = run_cross_validation(model, X, y)
-    eval_results = evaluate_model(model, X_test,
-                                   y_test, feature_names)
-
-    # Visualize
-    plot_model_results(model, X_test, y_test,
-                       eval_results['y_pred_proba'],
-                       feature_names)
-
-    # Save
-    save_model(model, feature_names)
-
+    # Final summary
     logger.info("=" * 50)
-    logger.info("TRAINING PIPELINE COMPLETE")
-    logger.info(f"Final AUC:  {eval_results['auc']:.4f}")
-    logger.info(f"Lift:       {eval_results['lift']:.1f}x")
+    logger.info("TRAINING COMPLETE — BOTH MODELS READY")
+    logger.info(f"Pipeline model AUC:   "
+                f"{pipeline_results['auc']:.4f}")
+    logger.info(f"Cold-start model AUC: "
+                f"{coldstart_results['auc']:.4f}")
     logger.info("=" * 50)
+
+    print(f"\n🎯 FIN-Score Models Ready!")
+    print(f"   Pipeline model AUC:   {pipeline_results['auc']:.4f}")
+    print(f"   Cold-start model AUC: {coldstart_results['auc']:.4f}")
+    print(f"\n📁 Saved to models/:")
+    print(f"   - {PIPELINE_MODEL_NAME}")
+    print(f"   - {COLDSTART_MODEL_NAME}")
+    print(f"   - {PIPELINE_FEATURES_NAME}")
+    print(f"   - {COLDSTART_FEATURES_NAME}")
 
     return {
-        'model': model,
-        'feature_names': feature_names,
-        'auc': eval_results['auc'],
-        'lift': eval_results['lift'],
-        'cv_results': cv_results
+        'pipeline': pipeline_results,
+        'coldstart': coldstart_results
     }
 
-
 # ============================================================
-# TEST — Run directly to train model
+# TEST — Run directly to train both models
 # ============================================================
 if __name__ == "__main__":
     results = run_training_pipeline()
-    print(f"\n🎯 FIN-Score Model Ready!")
-    print(f"   AUC:  {results['auc']:.4f}")
-    print(f"   Lift: {results['lift']:.1f}x")
-    print(f"   CV:   {results['cv_results']['mean_auc']:.4f} "
-          f"(+/- {results['cv_results']['std_auc']:.4f})")
+    print(f"\n✅ Both models trained and saved successfully!")
+    print(f"   Pipeline AUC:   {results['pipeline']['auc']:.4f}")
+    print(f"   Coldstart AUC:  {results['coldstart']['auc']:.4f}")
