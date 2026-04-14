@@ -29,6 +29,10 @@ MODEL_PARAMS = {
     "eval_metric": "auc"
 }
 
+# Class weight — optimized via grid search
+# Mathematical formula gives 1.59, grid search confirms 2.0 is optimal
+SCALE_POS_WEIGHT = 2.0
+
 # ── Train/Test Split ─────────────────────────────────────────
 TEST_SIZE = 0.2
 RANDOM_STATE = 42
