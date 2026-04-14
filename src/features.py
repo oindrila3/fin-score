@@ -295,6 +295,48 @@ def remove_outliers(df: pd.DataFrame,
 
 
 # ============================================================
+# STEP 10: REMOVE REDUNDANT FEATURES
+# ============================================================
+
+def remove_redundant_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Removes features identified as redundant via
+    multicollinearity analysis (correlation > 0.85).
+    
+    Decisions:
+    - engagement_score: perfectly correlated with 
+      Total Time Spent on Website (r=1.0) — drop it
+    - *_freq_encoded judgment cols: perfectly correlated 
+      with was_*_assessed flags — drop encoded versions,
+      keep binary flags which are more interpretable
+    - Asymmetrique Activity Index: highly correlated with
+      Activity Score — drop index, keep numeric score
+    """
+    cols_to_remove = [
+        # Perfect correlation with Total Time Spent on Website
+        'engagement_score',
+        
+        # Redundant with binary assessment flags
+        'Lead Profile_freq_encoded',
+        'Lead Quality_freq_encoded',
+        'Tags_freq_encoded',
+        
+        # Redundant with Asymmetrique Activity Score
+        'Asymmetrique Activity Index',
+    ]
+    
+    cols_dropped = [c for c in cols_to_remove if c in df.columns]
+    df = df.drop(columns=cols_dropped, errors='ignore')
+    
+    logger.info(f"Removed {len(cols_dropped)} redundant features:")
+    for col in cols_dropped:
+        logger.info(f"  - {col}")
+    logger.info(f"Remaining features: {df.shape[1]}")
+    
+    return df
+
+
+# ============================================================
 # MASTER PIPELINE FUNCTION
 # ============================================================
 
@@ -324,6 +366,7 @@ def run_feature_pipeline(df: pd.DataFrame,
     df = remove_outliers(df)
     df = engineer_new_features(df)
     df = encode_categorical_columns(df)
+    df = remove_redundant_features(df) 
 
     logger.info("=" * 50)
     logger.info(f"PIPELINE COMPLETE")
