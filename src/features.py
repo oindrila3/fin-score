@@ -153,32 +153,59 @@ def impute_missing_values(df: pd.DataFrame) -> pd.DataFrame:
     """
     Imputes missing values by column type:
     - Numeric columns: median imputation (robust to outliers)
-    - Categorical columns: mode imputation
+    - Sales judgment columns: explicit 'Not Assessed' + missingness flag
+    - General categorical columns: mode imputation
     """
     logger.info("Imputing missing values...")
 
-    # Numeric — median
+    # ── Numeric — median ─────────────────────────────────────
     for col in NUMERIC_COLUMNS:
         if col in df.columns and df[col].isnull().sum() > 0:
             median_val = df[col].median()
             df[col] = df[col].fillna(median_val)
             logger.info(f"  {col}: filled with median={median_val:.2f}")
 
-    # Asymmetrique index — median after encoding
+    # ── Asymmetrique index — median after encoding ────────────
     for col in ASYMMETRIQUE_INDEX_COLUMNS:
         if col in df.columns and df[col].isnull().sum() > 0:
             median_val = df[col].median()
             df[col] = df[col].fillna(median_val)
 
-    # Categorical — mode
-    for col in CATEGORICAL_COLUMNS:
+    # ── Sales judgment columns — preserve missingness signal ──
+    # These columns represent human assessment — missing ≠ random
+    # Missing means the lead was never reviewed by a sales rep
+    JUDGMENT_COLUMNS = {
+        'Lead Quality': 'Not Assessed',
+        'Lead Profile': 'Not Reviewed',
+        'Tags': 'Not Tagged',
+        'City': 'Unknown'
+    }
+
+    for col, fill_value in JUDGMENT_COLUMNS.items():
+        if col in df.columns:
+            # Create binary flag capturing missingness as signal
+            flag_col = f'was_{col.lower().replace(" ", "_")}_assessed'
+            df[flag_col] = df[col].notna().astype(int)
+            missing_count = df[col].isnull().sum()
+            if missing_count > 0:
+                df[col] = df[col].fillna(fill_value)
+                logger.info(f"  {col}: {missing_count:,} nulls → "
+                           f"'{fill_value}' + created flag '{flag_col}'")
+
+    # ── General categorical — mode ────────────────────────────
+    GENERAL_CATEGORICALS = [
+        'Lead Origin', 'Lead Source', 'Last Activity',
+        'Last Notable Activity', 'Specialization',
+        'What is your current occupation', 'Country'
+    ]
+
+    for col in GENERAL_CATEGORICALS:
         if col in df.columns and df[col].isnull().sum() > 0:
             mode_val = df[col].mode()[0]
             df[col] = df[col].fillna(mode_val)
             logger.info(f"  {col}: filled with mode='{mode_val}'")
 
     return df
-
 
 # ============================================================
 # STEP 7: ENCODE CATEGORICAL COLUMNS
