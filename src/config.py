@@ -5,6 +5,15 @@
 
 import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Override config with environment variables if present
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
+API_HOST = os.getenv('API_HOST', '0.0.0.0')
+API_PORT = int(os.getenv('API_PORT', 8000))
 
 # ── Project Paths ────────────────────────────────────────────
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -70,3 +79,26 @@ PRIORITY_LABELS = {
     "medium": "Warm Lead",
     "low": "Cold Lead"
 }
+
+# ── Quick Test ───────────────────────────────────────────────
+if __name__ == "__main__":
+    print(f"Root Directory:           {ROOT_DIR}")
+    print(f"Data Directory:           {DATA_DIR}")
+    print(f"Model Directory:          {MODEL_DIR}")
+    print(f"Raw Data Path:            {RAW_DATA_PATH}")
+    print(f"Processed Data Path:      {PROCESSED_DATA_PATH}")
+    print(f"Target Column:            {TARGET_COLUMN}")
+    print(f"High Priority Threshold:  {HIGH_PRIORITY_THRESHOLD}")
+    print(f"Medium Priority Threshold:{MEDIUM_PRIORITY_THRESHOLD}")
+    print(f"Test Size:                {TEST_SIZE}")
+    print(f"Scale Pos Weight:         {SCALE_POS_WEIGHT}")
+    print(f"Environment:              {ENVIRONMENT}")
+    print(f"API Host:                 {API_HOST}")
+    print(f"API Port:                 {API_PORT}")
+    print(f"\nModel Files:")
+    print(f"  Pipeline:   {PIPELINE_MODEL_NAME}")
+    print(f"  Coldstart:  {COLDSTART_MODEL_NAME}")
+    print(f"\nColdstart Excluded Features:")
+    for f in COLDSTART_FEATURES_TO_EXCLUDE:
+        print(f"  - {f}")
+    print(f"\n✅ Config loaded successfully!")
