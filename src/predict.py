@@ -268,31 +268,32 @@ def get_threshold_context(score: float) -> Dict:
 def log_score(score: float,
                priority: str,
                model_type: str,
-               version: str) -> None:
+               version: str,
+               is_borderline: bool = False,
+               confidence: str = '',
+               batch_id: str = None) -> None:
     """
-    Logs every score to a JSONL file for drift monitoring.
-    
-    Over time this log lets us detect:
-    - Score distribution shift (are more leads scoring Hot?)
-    - Model degradation (is average score drifting?)
-    - Volume anomalies (sudden spike in Cold leads?)
-    
-    In production this would write to a data warehouse.
-    Here we write to a local file for demonstration.
+    Logs score to SQLite monitoring database.
+    In production this writes to Snowflake/PostgreSQL.
+    Never lets logging failure break scoring response.
     """
-    log_entry = {
-        'timestamp': datetime.utcnow().isoformat(),
-        'score': score,
-        'priority': priority,
-        'model_type': model_type,
-        'model_version': version
-    }
-    
-    log_path = os.path.join(MODEL_DIR, 'score_log.jsonl')
-    os.makedirs(MODEL_DIR, exist_ok=True)
-    
-    with open(log_path, 'a') as f:
-        f.write(json.dumps(log_entry) + '\n')
+    try:
+        from src.monitoring import (
+            log_score_to_db,
+            initialize_database
+        )
+        initialize_database()
+        log_score_to_db(
+            score=score,
+            priority=priority,
+            model_type=model_type,
+            model_version=version,
+            is_borderline=is_borderline,
+            confidence=confidence,
+            batch_id=batch_id
+        )
+    except Exception as e:
+        logger.warning(f"Score logging failed: {e}")
 
 
 # ============================================================
@@ -422,7 +423,14 @@ def score_lead(lead_data: Dict,
         )
     
     # Step 8: Log for monitoring
-    log_score(score, priority, model_type, version)
+    log_score(
+        score=score,
+        priority=priority,
+        model_type=model_type,
+        version=version,
+        is_borderline=threshold_context['is_borderline'],
+        confidence=threshold_context['confidence']
+    )
     
     # Build complete response
     response = {
@@ -461,51 +469,69 @@ def score_batch(leads: list,
     explain=False by default for batch — SHAP is slow at scale.
     """
     logger.info(f"Batch scoring {len(leads):,} leads...")
-    
+
+    # Step 1: Load model once
     model, feature_names, version = load_model(model_type)
-    
+
+    # Step 2: Prepare all leads
     leads_df = pd.DataFrame(leads)
     for feature in feature_names:
         if feature not in leads_df.columns:
             leads_df[feature] = 0
-    
+
     leads_df = leads_df[feature_names]
     leads_df = leads_df.apply(
         pd.to_numeric, errors='coerce'
     ).fillna(0)
-    
+
+    # Step 3: Score all leads in one pass
     scores = model.predict_proba(leads_df)[:, 1]
     priorities = [
-        PRIORITY_LABELS['high'] 
+        PRIORITY_LABELS['high']
         if s >= HIGH_PRIORITY_THRESHOLD
-        else PRIORITY_LABELS['medium'] 
+        else PRIORITY_LABELS['medium']
         if s >= MEDIUM_PRIORITY_THRESHOLD
         else PRIORITY_LABELS['low']
         for s in scores
     ]
-    
+
+    # Step 4: Build results DataFrame
     results = pd.DataFrame({
         'score': scores.round(4),
         'priority': priorities,
-        'recommendation': [get_recommendation(p) 
+        'recommendation': [get_recommendation(p)
                            for p in priorities],
         'model_version': version,
-        'confidence': [get_threshold_context(s)['confidence'] 
+        'model_type': model_type,
+        'confidence': [get_threshold_context(s)['confidence']
                        for s in scores],
         'is_borderline': [get_threshold_context(s)['is_borderline']
                           for s in scores]
     })
-    
-    # Log distribution for monitoring
+
+    # Step 5: Calculate distribution
     hot = (results['priority'] == PRIORITY_LABELS['high']).sum()
     warm = (results['priority'] == PRIORITY_LABELS['medium']).sum()
     cold = (results['priority'] == PRIORITY_LABELS['low']).sum()
-    
+
     logger.info(f"Batch complete — "
                 f"Hot: {hot:,} | Warm: {warm:,} | Cold: {cold:,}")
-    
-    return results
 
+    # Step 6: Log batch to monitoring DB
+    try:
+        from src.monitoring import (
+            log_batch_to_db,
+            initialize_database
+        )
+        initialize_database()
+        batch_id = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        log_batch_to_db(results, batch_id=batch_id)
+        logger.info(f"Batch logged to DB [batch_id: {batch_id}]")
+    except Exception as e:
+        logger.warning(f"Batch logging failed: {e}")
+
+    # Step 7: Return results
+    return results
 
 # ============================================================
 # DRIFT MONITOR

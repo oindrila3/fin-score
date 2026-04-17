@@ -5,3 +5,10 @@ __pycache__/
 kaggle.json
 *.png
 data/leads_processed.csv
+models/*.pkl
+models/*.db
+models/*.png
+models/*.jsonl
+models/batch_scores/
+models/drift_reports/
+!models/.gitkeep

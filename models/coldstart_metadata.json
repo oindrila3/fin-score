@@ -1,0 +1,52 @@
+{
+  "model_type": "coldstart",
+  "trained_at": "2026-04-17T22:11:51.967991+00:00",
+  "auc": 0.9109,
+  "cv_auc": 0.9239,
+  "cv_std": 0.0033,
+  "lift": 2.48,
+  "n_features": 26,
+  "n_training_samples": 7392,
+  "n_test_samples": 1848,
+  "feature_names": [
+    "Do Not Email",
+    "TotalVisits",
+    "Total Time Spent on Website",
+    "Page Views Per Visit",
+    "Search",
+    "Magazine",
+    "Newspaper Article",
+    "X Education Forums",
+    "Newspaper",
+    "Digital Advertisement",
+    "Through Recommendations",
+    "Asymmetrique Profile Index",
+    "Asymmetrique Activity Score",
+    "Asymmetrique Profile Score",
+    "A free copy of Mastering The Interview",
+    "was_city_assessed",
+    "asymmetrique_combined",
+    "is_high_engagement",
+    "Lead Origin_freq_encoded",
+    "Lead Source_freq_encoded",
+    "Last Activity_freq_encoded",
+    "Last Notable Activity_freq_encoded",
+    "Specialization_freq_encoded",
+    "What is your current occupation_freq_encoded",
+    "City_freq_encoded",
+    "Country_freq_encoded"
+  ],
+  "model_version": "v_20260417",
+  "excluded_features": [
+    "Lead Quality_freq_encoded",
+    "Lead Profile_freq_encoded",
+    "Tags_freq_encoded",
+    "was_lead_quality_assessed",
+    "was_lead_profile_assessed",
+    "was_tags_assessed"
+  ],
+  "thresholds": {
+    "high": 0.7,
+    "medium": 0.4
+  }
+}

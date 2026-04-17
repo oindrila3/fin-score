@@ -10,6 +10,8 @@ import os
 import sys
 import pickle
 from typing import Tuple, Dict
+import json
+from datetime import datetime, timezone
 
 from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score
 from sklearn.metrics import (
@@ -434,12 +436,39 @@ def train_pipeline_model(df: pd.DataFrame) -> Dict:
         pickle.dump(feature_names, f)
 
     logger.info(f"Pipeline model saved: AUC={eval_results['auc']:.4f}")
+
+    # ── Save model metadata ───────────────────────────────────
+    # Metadata tells us exactly what this model is:
+    # when trained, on what data, performance metrics
+    # Critical for model versioning and audit trails
+    metadata = {
+        'model_type': 'pipeline',
+        'trained_at': datetime.now(timezone.utc).isoformat(),
+        'auc': round(eval_results['auc'], 4),
+        'cv_auc': round(cv_results['mean_auc'], 4),
+        'cv_std': round(cv_results['std_auc'], 4),
+        'lift': round(eval_results['lift'], 2),
+        'n_features': len(feature_names),
+        'n_training_samples': int(len(X_train)),
+        'n_test_samples': int(len(X_test)),
+        'feature_names': feature_names,
+        'model_version': f"v_{datetime.now(timezone.utc).strftime('%Y%m%d')}",
+        'thresholds': {
+            'high': HIGH_PRIORITY_THRESHOLD,
+            'medium': MEDIUM_PRIORITY_THRESHOLD
+        }
+    }
+    metadata_path = os.path.join(MODEL_DIR, 'pipeline_metadata.json')
+    with open(metadata_path, 'w') as f:
+        json.dump(metadata, f, indent=2)
+    logger.info(f"Pipeline metadata saved to {metadata_path}")
     
     return {
         'model': model,
         'feature_names': feature_names,
         'auc': eval_results['auc'],
         'lift': eval_results['lift'],
+        'cv_auc': cv_results['mean_auc'],
         'model_type': 'pipeline'
     }
 
@@ -502,6 +531,30 @@ def train_coldstart_model(df: pd.DataFrame) -> Dict:
         pickle.dump(clean_feature_names, f)
 
     logger.info(f"Cold-start model saved: AUC={eval_results['auc']:.4f}")
+
+    # ── Save model metadata ───────────────────────────────────
+    metadata = {
+        'model_type': 'coldstart',
+        'trained_at': datetime.now(timezone.utc).isoformat(),
+        'auc': round(eval_results['auc'], 4),
+        'cv_auc': round(cv_results['mean_auc'], 4),
+        'cv_std': round(cv_results['std_auc'], 4),
+        'lift': round(eval_results['lift'], 2),
+        'n_features': len(clean_feature_names),
+        'n_training_samples': int(len(X_train)),
+        'n_test_samples': int(len(X_test)),
+        'feature_names': clean_feature_names,
+        'model_version': f"v_{datetime.now(timezone.utc).strftime('%Y%m%d')}",
+        'excluded_features': COLDSTART_FEATURES_TO_EXCLUDE,
+        'thresholds': {
+            'high': HIGH_PRIORITY_THRESHOLD,
+            'medium': MEDIUM_PRIORITY_THRESHOLD
+        }
+    }
+    metadata_path = os.path.join(MODEL_DIR, 'coldstart_metadata.json')
+    with open(metadata_path, 'w') as f:
+        json.dump(metadata, f, indent=2)
+    logger.info(f"Coldstart metadata saved to {metadata_path}")
     
     return {
         'model': model,
