@@ -445,7 +445,7 @@ def score_lead(lead_data: Dict,
         'is_borderline': threshold_context['is_borderline'],
         'threshold_context': threshold_context,
         'explanation': explanation,
-        'scored_at': datetime.utcnow().isoformat()
+        'scored_at': datetime.now(timezone.utc).isoformat()
     }
     
     logger.info(
