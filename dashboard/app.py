@@ -290,7 +290,7 @@ def render_sidebar():
             page = st.radio("Navigate:", ["Business Impact and ROI", "Live Lead Scorer", "Lead Pipeline"], label_visibility="collapsed")
         else:
             st.markdown("### Data Scientist Pages")
-            page = st.radio("Navigate:", ["Model Performance", "Feature Analysis", "Drift Monitoring", "Model Comparison"], label_visibility="collapsed")
+            page = st.radio("Navigate:", ["Model Performance", "Feature Analysis", "Drift Monitoring", "Model Comparison","Uplift Analysis"], label_visibility="collapsed")
 
         st.markdown("---")
         st.markdown("### Model")
@@ -1424,6 +1424,382 @@ def select_model(lead_data: dict) -> str:
         return 'coldstart'   # AUC: 0.91
     """, language='python')
 
+# ============================================================
+# DS PAGE 5: UPLIFT ANALYSIS
+# ============================================================
+
+def render_uplift_analysis():
+    """Uplift modeling -- who actually needs a sales call?"""
+    st.markdown(
+        '<div class="section-header">Uplift Analysis</div>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown("""
+    Propensity scoring answers: **"Will this lead convert?"**
+
+    Uplift modeling answers: **"Will this lead convert
+    BECAUSE we called them?"**
+
+    The difference matters enormously for sales efficiency.
+    A lead scoring 90% propensity might convert with or
+    without a call -- meaning your sales rep's time adds
+    zero value. Uplift finds the leads where calling
+    actually changes the outcome.
+    """)
+
+    # Load uplift metadata
+    uplift_meta_path = os.path.join(
+        MODEL_DIR, 'uplift_metadata.json'
+    )
+    uplift_scores_path = os.path.join(
+        MODEL_DIR, 'uplift_scores.csv'
+    )
+
+    if not os.path.exists(uplift_meta_path):
+        st.warning(
+            "Uplift model not trained yet. "
+            "Run: python -m src.uplift"
+        )
+        return
+
+    with open(uplift_meta_path, 'r') as f:
+        meta = json.load(f)
+
+    df_uplift = pd.read_csv(uplift_scores_path)
+
+    # ── Key Metrics ───────────────────────────────────────
+    seg_dist = meta['segment_distribution']
+    total = sum(seg_dist.values())
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        n = seg_dist.get('Persuadable', 0)
+        st.markdown(f"""
+        <div class="kpi-card">
+            <p class="kpi-label">Persuadables</p>
+            <p class="kpi-value">{n:,}</p>
+            <p class="kpi-delta">Call these first</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col2:
+        n = seg_dist.get('Sure Thing', 0)
+        st.markdown(f"""
+        <div class="kpi-card">
+            <p class="kpi-label">Sure Things</p>
+            <p class="kpi-value">{n:,}</p>
+            <p class="kpi-delta">Will buy anyway</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col3:
+        n = seg_dist.get('Sleeping Dog', 0)
+        st.markdown(f"""
+        <div class="kpi-card">
+            <p class="kpi-label">Sleeping Dogs</p>
+            <p class="kpi-value">{n:,}</p>
+            <p class="kpi-delta">Low odds, worth nudge</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col4:
+        n = seg_dist.get('Lost Cause', 0)
+        st.markdown(f"""
+        <div class="kpi-card">
+            <p class="kpi-label">Lost Causes</p>
+            <p class="kpi-value">{n:,}</p>
+            <p class="kpi-delta">Do not call</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── Segment Explanation ───────────────────────────────
+    st.markdown("#### The Four Uplift Segments")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.success(f"""
+        **Persuadable ({seg_dist.get('Persuadable', 0):,} leads)**
+
+        High propensity AND high uplift.
+        These leads are likely to convert AND calling
+        them significantly increases that probability.
+
+        **Action: Call immediately -- highest ROI**
+        """)
+
+        st.info(f"""
+        **Sleeping Dog ({seg_dist.get('Sleeping Dog', 0):,} leads)**
+
+        Low propensity but calling helps.
+        They are unlikely to convert on their own
+        but a sales call moves the needle.
+
+        **Action: Include in lower priority call queue**
+        """)
+
+    with col2:
+        st.warning(f"""
+        **Sure Thing ({seg_dist.get('Sure Thing', 0):,} leads)**
+
+        High propensity but LOW uplift.
+        These leads will convert WITH OR WITHOUT a call.
+        Calling them wastes a sales rep's time.
+
+        **Action: Automated sequence only -- save rep time**
+        """)
+
+        st.error(f"""
+        **Lost Cause ({seg_dist.get('Lost Cause', 0):,} leads)**
+
+        Low propensity AND low uplift.
+        Calling will not change the outcome.
+
+        **Action: Do not call -- remove from queue**
+        """)
+
+    # ── Uplift Distribution Chart ─────────────────────────
+    st.markdown("#### Uplift Score Distribution")
+
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=[
+            'Uplift Score Distribution',
+            'Conversion Rate by Segment'
+        ]
+    )
+
+    # Histogram of uplift scores
+    fig.add_trace(
+        go.Histogram(
+            x=df_uplift['uplift_score'],
+            nbinsx=50,
+            marker_color='#00d4aa',
+            opacity=0.8,
+            name='Uplift Score',
+            hovertemplate='Uplift: %{x:.3f}<br>Count: %{y}<extra></extra>'
+        ),
+        row=1, col=1
+    )
+    fig.add_vline(
+        x=0, line_dash='dash',
+        line_color='white', opacity=0.5,
+        row=1, col=1
+    )
+    fig.add_vline(
+        x=meta['uplift_threshold'],
+        line_dash='dot',
+        line_color='#f39c12', opacity=0.8,
+        annotation_text='Uplift threshold',
+        annotation_font_color='#f39c12',
+        row=1, col=1
+    )
+
+    # Conversion by segment
+    if 'Converted' in df_uplift.columns:
+        conv_by_seg = df_uplift.groupby(
+            'uplift_segment'
+        )['Converted'].mean().reset_index()
+        conv_by_seg.columns = ['Segment', 'Conversion Rate']
+        conv_by_seg = conv_by_seg.sort_values(
+            'Conversion Rate', ascending=False
+        )
+
+        seg_colors = {
+            'Persuadable':  '#00d4aa',
+            'Sure Thing':   '#f39c12',
+            'Sleeping Dog': '#3498db',
+            'Lost Cause':   '#e74c3c'
+        }
+
+        fig.add_trace(
+            go.Bar(
+                x=conv_by_seg['Segment'],
+                y=(conv_by_seg['Conversion Rate'] * 100).round(1),
+                marker_color=[
+                    seg_colors.get(s, '#888')
+                    for s in conv_by_seg['Segment']
+                ],
+                opacity=0.85,
+                name='Conversion Rate',
+                hovertemplate='%{x}<br>Conversion: %{y:.1f}%<extra></extra>'
+            ),
+            row=1, col=2
+        )
+
+    fig.update_layout(
+        height=400,
+        paper_bgcolor='#1e2130',
+        plot_bgcolor='#1e2130',
+        font=dict(color='white'),
+        showlegend=False,
+        margin=dict(l=40, r=40, t=60, b=40)
+    )
+    fig.update_xaxes(
+        showgrid=True, gridcolor='#3d4460',
+        tickfont=dict(color='white')
+    )
+    fig.update_yaxes(
+        showgrid=True, gridcolor='#3d4460',
+        tickfont=dict(color='white')
+    )
+    for annotation in fig.layout.annotations:
+        annotation.font.color = 'white'
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.info(f"""
+    **How to read the uplift distribution:**
+    - Scores above 0 mean calling helps conversion
+    - Scores near 0 mean calling makes no difference
+    - The mean uplift is **{meta['mean_uplift']:.3f}**
+      meaning on average a sales call increases
+      conversion probability by
+      **{meta['mean_uplift']:.1%}**
+    - **{meta['pct_positive_uplift']:.0%}** of leads
+      have positive uplift -- calling helps most leads
+
+    **The key business insight:**
+    The **{seg_dist.get('Sure Thing', 0):,} Sure Things**
+    converting at 93.8% represent calls your sales team
+    is making that add zero value. Removing them from
+    the call queue saves time for Persuadables.
+    """)
+
+    # ── T-Learner Explanation ─────────────────────────────
+    st.markdown("#### How the Model Works")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("""
+        **T-Learner Approach**
+
+        Two separate XGBoost models trained on different groups:
+
+        - **Treatment Model:** trained on 3,112 leads that
+          sales contacted -- learns what predicts conversion
+          when a sales rep is involved
+        - **Control Model:** trained on 6,128 leads with
+          no sales contact -- learns what predicts organic
+          conversion
+
+        **Uplift Score = Treatment Prediction - Control Prediction**
+        """)
+
+    with col2:
+        st.markdown(f"""
+        **Model Performance**
+
+        Cross-validation AUC: **{meta['cv_auc']:.4f}**
+        +/- {meta['cv_std']:.4f}
+
+        Treatment group size: **{meta['n_treatment']:,}**
+        (33.7% of all leads)
+
+        Control group size: **{meta['n_control']:,}**
+        (66.3% of all leads)
+
+        Treatment definition: Sales proactively contacted
+        via SMS, phone, or email outreach.
+        """)
+
+    # ── Propensity vs Uplift Scatter ──────────────────────
+    st.markdown("#### Propensity vs Uplift -- The Full Picture")
+
+    fig2 = go.Figure()
+
+    seg_colors = {
+        'Persuadable':  '#00d4aa',
+        'Sure Thing':   '#f39c12',
+        'Sleeping Dog': '#3498db',
+        'Lost Cause':   '#e74c3c'
+    }
+
+    for segment, color in seg_colors.items():
+        mask = df_uplift['uplift_segment'] == segment
+        subset = df_uplift[mask].sample(
+            min(300, mask.sum()), random_state=42
+        )
+        fig2.add_trace(go.Scatter(
+            x=subset['p_treatment'],
+            y=subset['uplift_score'],
+            mode='markers',
+            name=segment,
+            marker=dict(
+                color=color, size=5, opacity=0.6
+            ),
+            hovertemplate=(
+                f'<b>{segment}</b><br>'
+                'Propensity: %{x:.3f}<br>'
+                'Uplift: %{y:.3f}<extra></extra>'
+            )
+        ))
+
+    fig2.add_hline(
+        y=meta['uplift_threshold'],
+        line_dash='dash', line_color='white',
+        opacity=0.4,
+        annotation_text='Uplift threshold',
+        annotation_font_color='white'
+    )
+    fig2.add_vline(
+        x=meta['propensity_threshold'],
+        line_dash='dash', line_color='white',
+        opacity=0.4,
+        annotation_text='Propensity threshold',
+        annotation_font_color='white'
+    )
+
+    fig2.update_layout(
+        height=500,
+        paper_bgcolor='#1e2130',
+        plot_bgcolor='#1e2130',
+        font=dict(color='white'),
+        xaxis_title='Propensity Score (P(convert | called))',
+        yaxis_title='Uplift Score (P(convert|called) - P(convert|not called))',
+        title=dict(
+            text='Propensity vs Uplift -- Each dot is a lead',
+            font=dict(color='white', size=13)
+        ),
+        legend=dict(
+            bgcolor='#252940',
+            font=dict(color='white')
+        )
+    )
+    fig2.update_xaxes(
+        showgrid=True, gridcolor='#3d4460',
+        tickfont=dict(color='white')
+    )
+    fig2.update_yaxes(
+        showgrid=True, gridcolor='#3d4460',
+        tickfont=dict(color='white')
+    )
+
+    st.plotly_chart(fig2, use_container_width=True)
+
+    st.info("""
+    **How to read this scatter plot:**
+    Each dot is a lead. The x-axis is propensity
+    (likelihood to convert if called). The y-axis is
+    uplift (how much the call itself helps).
+
+    The two dashed lines divide leads into four quadrants:
+    - Top right: Persuadables -- high propensity, calling helps
+    - Bottom right: Sure Things -- high propensity, calling irrelevant
+    - Top left: Sleeping Dogs -- low propensity, calling helps
+    - Bottom left: Lost Causes -- low propensity, calling irrelevant
+
+    **Hover over any dot to see its exact scores.**
+    """)
+
 
 # ============================================================
 # MAIN
@@ -1457,6 +1833,8 @@ def main():
             render_drift_monitoring(df)
         elif page == "Model Comparison":
             render_model_comparison(metadata)
+        elif page == "Uplift Analysis":
+            render_uplift_analysis()
 
 
 if __name__ == "__main__":

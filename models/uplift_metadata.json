@@ -1,0 +1,25 @@
+{
+  "model_type": "T-Learner Uplift",
+  "treatment_definition": [
+    "SMS Sent",
+    "Email Bounced",
+    "Had a Phone Conversation",
+    "Approached upfront",
+    "Email Received"
+  ],
+  "n_treatment": 3112,
+  "n_control": 6128,
+  "cv_auc": 0.9141682805968026,
+  "cv_std": 0.015747255761287274,
+  "propensity_threshold": 0.5,
+  "uplift_threshold": 0.1,
+  "segment_distribution": {
+    "Persuadable": 3369,
+    "Sleeping Dog": 2536,
+    "Lost Cause": 2123,
+    "Sure Thing": 1212
+  },
+  "mean_uplift": 0.21825525164604187,
+  "pct_positive_uplift": 0.883008658008658,
+  "trained_at": "2026-05-01T07:55:34.887736+00:00"
+}
