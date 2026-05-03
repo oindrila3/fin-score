@@ -234,8 +234,6 @@ Revenue: $38,640/day
 Cost: $4,500/day
 Net: $34,140/day
 
-Incremental Value: +$27,600/day = +422% ROI improvement
-
 🎓 Key Learnings
 1. Data Leakage is Real
 Initial model showed 0.96 AUC — too good to be true. Root cause: Lead Quality and Lead Profile are assigned after conversion. Lesson: Always audit feature timelines relative to prediction target.
